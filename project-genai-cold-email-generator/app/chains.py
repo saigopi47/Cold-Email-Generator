@@ -10,9 +10,16 @@ load_dotenv()
 
 class Chain:
     def __init__(self):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY not found! Please set it in .env file.\n"
+                "Copy .env.example to .env and add your Groq API key."
+            )
+            
         self.llm = ChatGroq(
             temperature=0, 
-            groq_api_key=os.getenv("GROQ_API_KEY"), 
+            groq_api_key=api_key, 
             model_name="llama-3.3-70b-versatile"
         )
 
