@@ -1,10 +1,15 @@
 import pandas as pd
+from pathlib import Path
 
 class Portfolio:
-    def __init__(self, file_path="app/resource/my_portfolio.csv"):
-        self.file_path = file_path
-        self.data = pd.read_csv(file_path)
-        print(f"Loaded {len(self.data)} portfolio entries")
+    def __init__(self, file_path=None):
+        if file_path is None:
+            # Get the directory where this file is located (app folder)
+            current_dir = Path(__file__).parent
+            file_path = current_dir / "resource" / "my_portfolio.csv"
+        self.file_path = str(file_path)
+        self.data = pd.read_csv(self.file_path)
+        print(f"Loaded {len(self.data)} portfolio entries from {self.file_path}")
 
     def load_portfolio(self):
         # Simple text matching - no ChromaDB needed
