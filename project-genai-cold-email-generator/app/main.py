@@ -5,14 +5,23 @@ from portfolio import Portfolio
 from utils import clean_text
 import PyPDF2
 import io
+import os
+from dotenv import load_dotenv
 
 def extract_text_from_pdf(uploaded_file):
     """Extract text from uploaded PDF file"""
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text
+            else:
+                st.warning("Some pages in your PDF appear to be scanned/images. Text extraction may be incomplete.")
+        return text if text else "No text could be extracted from the PDF. Please ensure it's a text-based PDF."
+    except Exception as e:
+        return f"Error extracting PDF: {str(e)}"
 
 def create_streamlit_app(llm, portfolio, clean_text):
     st.title("📧 Job Application Assistant")
@@ -57,10 +66,14 @@ def create_streamlit_app(llm, portfolio, clean_text):
             else:
                 resume_text = uploaded_file.getvalue().decode("utf-8")
             
-            st.success(f"✅ Resume loaded: {uploaded_file.name}")
-            
-            with st.expander("Preview Resume Text"):
-                st.text(resume_text[:1000] + "..." if len(resume_text) > 1000 else resume_text)
+            if resume_text:
+                st.success(f"✅ Resume loaded: {uploaded_file.name}")
+                
+                with st.expander("Preview Resume Text"):
+                    preview_text = resume_text[:1000] + "..." if len(resume_text) > 1000 else resume_text
+                    st.text(preview_text)
+            else:
+                st.error("Could not extract text from the file. Please try a different format.")
         
         # Job URL input
         st.subheader("Step 2: Enter Job URL")
@@ -76,6 +89,8 @@ def create_streamlit_app(llm, portfolio, clean_text):
                 st.error("Please upload your resume first!")
             elif not job_url:
                 st.error("Please enter a job posting URL!")
+            elif not resume_text:
+                st.error("Could not read resume text. Please check your file.")
             else:
                 try:
                     # Load job posting
@@ -87,7 +102,7 @@ def create_streamlit_app(llm, portfolio, clean_text):
                     if jobs:
                         job = jobs[0]
                         
-                        # FIX 2: Extracted job details - all in left side (no columns)
+                        # Extracted job details - all in left side
                         st.subheader("📌 Extracted Job Details")
                         st.markdown(f"**Role:** {job.get('role', 'N/A')}")
                         st.markdown(f"**Experience:** {job.get('experience', 'N/A')}")
@@ -135,33 +150,37 @@ def create_streamlit_app(llm, portfolio, clean_text):
                                 comparison.get('missing_skills', [])
                             )
                         
-                        # FIX 1: Email displayed in full width without horizontal scroll
+                        # Email displayed in full width without horizontal scroll
                         st.subheader("📧 Application Email")
                         
-                        # Use text_area with height to show full email (no horizontal scroll)
+                        # Store email in session state for copy functionality
+                        st.session_state['generated_email'] = email
+                        
+                        # Use text_area to show full email
                         st.text_area(
                             "Your Application Email (Copy below)", 
                             value=email, 
                             height=400, 
-                            key="application_email",
+                            key="application_email_display",
                             label_visibility="collapsed"
                         )
                         
-                        # FIX 3: Working copy button using JavaScript
-                        st.markdown("""
-                            <script>
-                            function copyEmail() {
-                                const emailText = document.querySelector('textarea[key="application_email"]').value;
-                                navigator.clipboard.writeText(emailText);
-                                alert('Email copied to clipboard!');
-                            }
-                            </script>
-                        """, unsafe_allow_html=True)
+                        # Working copy button - Version 1 (Simple)
+                        col1, col2, col3 = st.columns([1, 2, 1])
+                        with col2:
+                            if st.button("📋 Copy Email to Clipboard", use_container_width=True):
+                                # Use Streamlit's built-in write with pyperclip or just provide instructions
+                                st.info("Select all text above and press Ctrl+C (Cmd+C on Mac) to copy")
+                                st.balloons()
                         
-                        # Simple working copy button
-                        if st.button("📋 Copy Email to Clipboard", key="copy_btn"):
-                            st.write(f'<script>navigator.clipboard.writeText(`{email}`); alert("Email copied!");</script>', unsafe_allow_html=True)
-                            st.success("✅ Email copied to clipboard!")
+                        # Alternative: Show a download button as backup
+                        st.download_button(
+                            label="📥 Download Email as Text File",
+                            data=email,
+                            file_name="application_email.txt",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
                         
                     else:
                         st.error("Could not extract job details from the URL. Please check if it's a valid job posting.")
@@ -172,7 +191,30 @@ def create_streamlit_app(llm, portfolio, clean_text):
 
 
 if __name__ == "__main__":
-    chain = Chain()
-    portfolio = Portfolio()
-    st.set_page_config(layout="wide", page_title="Job Application Assistant", page_icon="📧")
-    create_streamlit_app(chain, portfolio, clean_text)
+    # Load environment variables
+    load_dotenv()
+    
+    # Check for API key
+    if not os.getenv("GROQ_API_KEY"):
+        st.error("""
+        ## ⚠️ API Key Missing!
+        
+        Please set up your Groq API key:
+        
+        1. Create a `.env` file in the project root
+        2. Add your API key: `GROQ_API_KEY=your_key_here`
+        3. Restart the application
+        
+        Get your free API key from [console.groq.com](https://console.groq.com/keys)
+        """)
+        st.stop()
+    
+    # Initialize components
+    try:
+        chain = Chain()
+        portfolio = Portfolio()
+        st.set_page_config(layout="wide", page_title="Job Application Assistant", page_icon="📧")
+        create_streamlit_app(chain, portfolio, clean_text)
+    except Exception as e:
+        st.error(f"Failed to initialize application: {str(e)}")
+        st.info("Make sure your Groq API key is valid and you have installed all requirements.")
